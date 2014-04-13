@@ -1,0 +1,35 @@
+struct input
+{
+	float4 position : POSITION;
+	float2 uv		: TEXCOORD0;
+};
+
+struct output
+{
+	float4 position		: POSITION;
+	float2 uv			: TEXCOORD0;
+	float4 copyposition : TEXCOORD1;
+	float3 normsunpos : TEXCOORD2;
+	float4 sunpos : TEXCOORD3;
+	float4 moonpos : TEXCOORD5;
+	float4 projpos : TEXCOORD4;
+};
+
+output vertexfunction( input IN	, uniform float4x4 ModelCamProj
+								, uniform float3 sunposnormalized 
+								, uniform float3 moonposnormalized
+								)
+{
+	output OUT;
+	OUT.copyposition = IN.position;
+	
+	OUT.position = mul(ModelCamProj,IN.position);
+	OUT.projpos = mul(ModelCamProj,IN.position);
+	OUT.normsunpos = normalize(sunposnormalized);
+	OUT.sunpos = normalize(mul(ModelCamProj,float4(sunposnormalized,1)));
+	OUT.moonpos = normalize(mul(ModelCamProj,float4(moonposnormalized,1)));
+	OUT.uv = IN.uv;
+	
+
+	return OUT;	
+}

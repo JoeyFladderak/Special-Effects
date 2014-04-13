@@ -1,0 +1,29 @@
+struct input
+{
+	float4 position : POSITION;   // glVertex, position in model space
+	float3 normal	: NORMAL;     // glNormal, normal in model space
+	float2 uv		: TEXCOORD0;  // texture UV's
+};
+
+struct output
+{
+	float4 position					: POSITION;		// (projected) position in screen space
+	float2 uv						: TEXCOORD0;
+	float3 normalCameraSpace		: TEXCOORD1;
+	float4 posCameraSpace			: TEXCOORD2;	// position in camera space
+};
+
+
+output vertexfunction( input IN, uniform float4x4 ModelCamProj, uniform float4x4 ModelCam )
+{
+	output OUT;
+	
+	float3x3 ModelCamRot = (float3x3) ModelCam;
+	
+	OUT.position = mul( ModelCamProj, IN.position );		// projected position, in screen space
+	OUT.uv = IN.uv;
+	OUT.posCameraSpace = mul( ModelCam, IN.position );
+	OUT.normalCameraSpace = mul( ModelCamRot, IN.normal );
+
+	return OUT;	
+}

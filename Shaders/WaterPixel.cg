@@ -1,0 +1,103 @@
+struct input
+{
+	float4 position		: POSITION;		// (projected) position in screen space
+	float4 pixelpos		: TEXCOORD5;		// (projected) position in screen space
+	float4 posworld		: TEXCOORD6;
+	float4 color		: COLOR;
+	float4 pos			: TEXCOORD0;	// position in world space (not projected)
+	float3 normal		: TEXCOORD1;
+	float2 uv			: TEXCOORD2;
+	float3 tangent		: TEXCOORD3;
+	float3 binormal		: TEXCOORD4;
+	float depth			: TEXCOORD7;
+};
+
+#define NEARPLANE 0.01
+#define FARPLANE 1000.0
+
+float ZfromDepth( float depth, float zNear, float zFar )
+{
+	// source: http://olivers.posterous.com/linear-depth-in-glsl-for-real
+	// OpenGL only!
+	return 2*zFar*zNear / (zFar + zNear - (zFar - zNear)*(2*depth -1));
+}
+
+struct output 
+{
+	float4 color : COLOR;
+};
+float3 expand(float3 v)
+{
+	return (v - 0.5) * 2;
+}
+
+float texwidth = 1.0f/512 * 10;
+output pixelfunction( input IN, 
+					uniform float4x4 worldCam, 
+					uniform float4x4 ModelCamp, 
+					uniform float4 lightPos,
+					uniform float3 lightColor, 
+					uniform float3 eyePosW, 
+					uniform float uvoffset,
+					uniform sampler2D normalmap: TEXUNIT0,
+					uniform sampler2D reflectmap: TEXUNIT1,
+					uniform sampler2D refractmap: TEXUNIT2,
+					uniform sampler2D depthmap: TEXUNIT3
+					 )
+{
+	output OUT;
+
+	float3 P = IN.pos.xyz;
+
+    float3x3 tangentMatrix = float3x3( normalize( IN.tangent ), 
+                                       normalize( IN.binormal ),
+                                       normalize( IN.normal.xyz ) );
+
+	
+	
+    float2 screenPosition = IN.pixelpos.xy / IN.pixelpos.w; 
+    screenPosition = (screenPosition + 1.0)/2; 
+    screenPosition.y = screenPosition.y; 
+    
+    float3 normalTex = expand(tex2D(normalmap, IN.uv).xyz);
+    normalTex += expand(tex2D(normalmap, (IN.uv + float2(texwidth,0)) + uvoffset * 3.1f).xyz);
+    normalTex += expand(tex2D(normalmap, (-IN.uv + float2(-texwidth,0)) + uvoffset * 5.2f).xyz);
+    normalTex += expand(tex2D(normalmap, (IN.uv + float2(0,texwidth)) + uvoffset * 1.3f).xyz);
+    normalTex += expand(tex2D(normalmap, (-IN.uv + float2(0,-texwidth)) + uvoffset * 4.8f).xyz);
+    float3 N = normalize( (normalTex) );
+    float3 refractTex = tex2D(refractmap, (screenPosition) - (N.xy * 0.0125f / IN.posworld.z)).xyz;
+    float3 reflectTex = tex2D(reflectmap, (screenPosition) - (N.xy * 0.025f / IN.posworld.z)).xyz;
+    
+    float waterZdepth = IN.depth;
+    float refractZdepth = ZfromDepth(tex2D(depthmap, (screenPosition)).xyz,NEARPLANE,FARPLANE);
+    float distance = clamp(1/((refractZdepth - waterZdepth)),0,1);
+
+    N = normalize(mul( N, tangentMatrix )); 	
+    float3 L = normalize( lightPos - IN.pos.xyz );
+    float3 V = normalize( eyePosW - IN.pos.xyz );
+    float3 H = normalize ( L + V );
+    
+    float fresnel = dot(V,N);
+    
+    float specular = 0;
+    float diffuse = saturate(dot(N, L));
+    float remappedLambert = diffuse * 0.3 + 0.7;
+    if ( diffuse > 0 )
+    {
+        specular = pow(saturate(dot(N, H)), 100);
+    }     
+    
+    float4 diffuseColor = float4(0.4,1,1,1);
+    float4 specularColor = float4(1,1,1,1) * specular;
+    float3 deepColor = float3(0.2784,0.3961,1);
+    
+    
+    float3 turqoise = float3(64.0f  / 255.0f, 224.0f  / 255.0f, 208.0f  / 255.0f);
+    float3 reflectcolor = clamp(reflectTex * diffuseColor,0,1);
+    float3 refractcolor = lerp(deepColor,refractTex * turqoise,distance);
+    
+       
+	OUT.color.xyz = lerp(reflectcolor,refractcolor,clamp(fresnel,0,1)) + (specularColor * lightColor);
+	return OUT;
+}
+

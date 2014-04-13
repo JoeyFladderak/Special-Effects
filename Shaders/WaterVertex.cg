@@ -1,0 +1,43 @@
+struct input
+{
+	float4 position : POSITION;
+	float4 color    : COLOR;
+	float3 normal	: NORMAL;
+	float2 uv		: TEXCOORD0;
+};
+
+struct output
+{
+	float4 position		: POSITION;
+	float4 pixelpos		: TEXCOORD5;
+	float4 posworld		: TEXCOORD6;
+	float4 color		: COLOR;
+	float4 pos			: TEXCOORD0;
+	float3 normal		: TEXCOORD1;
+	float2 uv			: TEXCOORD2;
+	
+	float3 tangent		: TEXCOORD3;
+	float3 binormal		: TEXCOORD4;
+	float depth			: TEXCOORD7;
+};
+
+
+output vertexfunction( input IN, uniform float4x4 ModelCamProj, uniform float4x4 ModelCam)
+{
+	output OUT;
+	
+    OUT.position = mul(ModelCamProj, IN.position);
+    OUT.pixelpos = OUT.position;
+    OUT.posworld = mul( ModelCam, IN.position );
+    OUT.pos = IN.position;
+    OUT.depth = mul( ModelCamProj,IN.position ).z;
+    
+    OUT.normal = float4( IN.normal, 0 );
+    OUT.tangent = float4( 1,0,0, 0 ).xyz;
+    OUT.binormal = cross( OUT.normal, OUT.tangent );
+    
+    OUT.color = IN.color;
+	OUT.uv = IN.uv;
+
+	return OUT;	
+}

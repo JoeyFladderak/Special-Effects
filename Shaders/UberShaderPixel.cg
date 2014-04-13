@@ -1,0 +1,86 @@
+struct input
+{
+	float4 position					: POSITION;		// (projected) position in screen space
+	float2 uv						: TEXCOORD0;
+	float3 normalCameraSpace		: TEXCOORD1;
+	float4 posCameraSpace			: TEXCOORD2;	// position in camera space
+};
+
+struct output 
+{
+	float4 color : COLOR;
+};
+
+float Lambert( float3 normal, float3 lightpos )
+{
+	return max( dot( normal, normalize(lightpos)), 0 );
+}
+
+float Specular( float3 normal, float3 lightPos, float3 eye, float specularPower )
+{
+	float3 N = normal;
+	float3 L = normalize( lightPos );
+	float3 V = normalize( eye );
+	float3 H = normalize( L + V );
+	float specular = pow( max( dot( N, H ), 0 ), specularPower );
+		
+	return specular;
+}
+
+
+output pixelfunction( input IN, uniform sampler2D diffuseTexture: TEXUNIT0, 
+								uniform sampler2D specularTexture: TEXUNIT1, 
+								uniform float4x4 WorldCam,
+								uniform float ambient, 
+								uniform float3 lightPosInWorldSpace, 
+								uniform float3 camPosInWorldSpace,
+								uniform float3 lightColor,						
+								uniform int bSpecularMapping,
+								uniform float specularPower,
+								uniform float3 clipPlane_point,
+								uniform float3 clipPlane_normal )
+{
+	output OUT;
+
+	// do clip test first
+	
+	float3 clipPlane_point_Camspace = mul( WorldCam, float4(clipPlane_point,1) );
+	float3 clipPlane_normal_Camspace = mul( WorldCam, float4(clipPlane_normal,0) );
+	
+	clip( dot( normalize( IN.posCameraSpace - clipPlane_point_Camspace ), clipPlane_normal_Camspace ) );
+	
+	// test pos in camspace against clip plane
+
+
+
+	float3 normalInCamSpace = normalize( IN.normalCameraSpace );
+	float4 lightPosInCamSpace = mul( WorldCam, float4(lightPosInWorldSpace,1) );
+	
+	float lambert = Lambert( normalInCamSpace, lightPosInCamSpace - IN.posCameraSpace );
+	float specular = Specular( normalInCamSpace, lightPosInCamSpace - IN.posCameraSpace , -IN.posCameraSpace, 1000 );
+
+	float4 specularColor;
+
+	if( bSpecularMapping == 1 )
+	{
+		specularColor = tex2D( specularTexture, IN.uv );
+	}
+	else
+	{
+		specularColor = float4( lightColor, 1);
+	}
+	
+	
+	
+	
+	specular = 0;		// DEBUG: turned off specular for now
+	
+	
+	
+	float4 diffuse = tex2D( diffuseTexture, IN.uv );
+	
+	OUT.color = diffuse * ambient + diffuse * lambert * float4(lightColor,1) + specular * specularColor;
+
+	return OUT;
+}
+

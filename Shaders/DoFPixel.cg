@@ -1,0 +1,67 @@
+struct input
+{
+	float4 position		: POSITION;
+	float2 uv			: TEXCOORD0;
+};
+
+struct output 
+{
+	float4 color : COLOR;
+};
+#define NEARPLANE 0.01
+#define FARPLANE 1000.0
+
+#define NUM_DOF_SAMPLES 64
+
+float ZfromDepth( float depth, float zNear, float zFar )
+{
+	// source: http://olivers.posterous.com/linear-depth-in-glsl-for-real
+	// OpenGL only!
+	return 2*zFar*zNear / (zFar + zNear - (zFar - zNear)*(2*depth -1));
+}
+
+float CalculateBlurriness(float curpixelz, float minrange, float maxrange)
+{
+	return (clamp( (curpixelz  - minrange) / (maxrange - minrange), 0, 1 ) * 2) - 1;
+}
+
+output pixelfunction( input IN, uniform sampler2D colortexture: TEXUNIT0, 
+								uniform sampler2D depthtexture: TEXUNIT1,
+								uniform float2 samples[NUM_DOF_SAMPLES],
+								uniform float minrange,
+								uniform float maxrange,
+								uniform float blursize
+								)
+{
+	output OUT;
+
+	float curpixeldepth = tex2D(depthtexture, IN.uv);
+	float curpixelz = abs(ZfromDepth(curpixeldepth,NEARPLANE, FARPLANE));
+
+	float blurriness = CalculateBlurriness(curpixelz,minrange,maxrange);
+
+	float totalweight = 1.0f;
+	float3 finalColor = tex2D(colortexture, IN.uv).rgb; 
+
+	int numsamples = NUM_DOF_SAMPLES;
+
+	for(int i = 0; i < numsamples; i++)
+	{
+		float2 sampleuv = IN.uv + samples[i] * abs(blurriness) * blursize;
+		
+		float4 samplecolor = tex2D(colortexture, sampleuv);
+		float sampledepth = tex2D(depthtexture, sampleuv);
+		
+		float samplez = abs(ZfromDepth(sampledepth, NEARPLANE,FARPLANE));
+		float sampleblurriness = CalculateBlurriness(samplez,minrange,maxrange);
+
+		float sampleweight;
+		sampleweight = (sampledepth < curpixelz) ? abs(sampleblurriness) : 1.0;
+			
+		totalweight += sampleweight;	
+		finalColor += samplecolor * sampleweight;
+	}
+
+	OUT.color.rgb = (finalColor.rgb / totalweight);	
+	return OUT;
+}

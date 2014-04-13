@@ -1,0 +1,81 @@
+struct input
+{
+	float4 position		: POSITION;
+	float2 uv			: TEXCOORD0;
+	
+	float4 copyposition : TEXCOORD1;
+	float3 normsunpos : TEXCOORD2;
+	float4 sunpos : TEXCOORD3;
+	float4 moonpos : TEXCOORD5;
+	float4 projpos : TEXCOORD4;
+};
+
+struct output 
+{
+	float4 color : COLOR;
+};
+
+
+
+output pixelfunction( input IN	, uniform sampler2D gradient1: TEXUNIT0
+								, uniform sampler2D gradient2: TEXUNIT1
+								, uniform sampler2D suntexture: TEXUNIT2
+								, uniform sampler2D sungradient: TEXUNIT3
+								, uniform sampler2D moontexture: TEXUNIT4
+								, uniform sampler2D moonmasktexture: TEXUNIT5
+								, uniform sampler2D moonhalotexture: TEXUNIT6
+								, uniform sampler2D starfieldtexture: TEXUNIT7
+								, uniform sampler2D cloudfieldtexture: TEXUNIT8
+								, uniform float moonsunangle
+								, uniform float atmosthickness
+								, uniform float skyscroll
+								, uniform float lightstrength
+								, uniform float clouds
+								, uniform float stars
+								 )
+{
+	output OUT;
+
+	float aspect = 1080.0f/1920.0f;	
+	float2 suninscreen = IN.sunpos.xy / IN.sunpos.w;
+	float2 pixinscreen = IN.projpos.xy / IN.projpos.w;
+	float2 sunuv = ((suninscreen - pixinscreen) * 4) + float2(0.5,0.45 / aspect);
+	sunuv.y *= aspect;
+	
+	float2 pixelheight = float2(IN.copyposition.y,0);
+	float gradientsclr = dot(IN.copyposition.xyz,IN.normsunpos.xyz);
+	float3 suncolor = tex2D(suntexture,sunuv) * (tex2D(sungradient,pixelheight * atmosthickness) * gradientsclr);
+	
+	float2 mooninscreen = IN.moonpos.xy / IN.moonpos.w;
+	float2 moonuv = ((mooninscreen - pixinscreen) * 4) + float2(0.5,0.5 / aspect);
+	moonuv.y *= aspect;
+	
+	float3 moonmaskcolor = clamp(tex2D(moonmasktexture,moonuv) - moonsunangle,0,1);
+	float3 moonhalocolor = tex2D(moonhalotexture,moonuv) * clamp(1-IN.normsunpos.y,0,1);
+	float3 mooncolor = tex2D(moontexture,moonuv) * moonmaskcolor * tex2D(sungradient,pixelheight);
+	
+	float2 skyuv = float2(IN.copyposition.y * atmosthickness,0);
+	float3 skycolor = clamp(lerp(tex2D( gradient2, skyuv ),tex2D( gradient1, skyuv ),abs(IN.normsunpos.y * atmosthickness)) * clamp(IN.normsunpos.y * atmosthickness,0.025,1),0,1);
+		
+ 	float redcorrectscalar = clamp(1.0f-dot((IN.copyposition.xyz),IN.normsunpos.xyz),0,1);
+ 	float3 redcorrectcolor = ((float3( 1, 0.59, 0.16 ) * 0.90f  * redcorrectscalar)) * (1-clamp(IN.normsunpos.y * atmosthickness,0.0,1)) * clamp(IN.normsunpos.y * atmosthickness,0.0,1);
+ 	
+ 	float3 starcolor = tex2D(starfieldtexture,IN.uv + float2(skyscroll * 0.1,0) ) * clamp(abs(IN.normsunpos.y),0,1) * redcorrectscalar;
+	if(IN.normsunpos.y > 0)starcolor = float3(0,0,0);
+	if(stars == 0)starcolor = float3(0,0,0);
+	
+	float4 cloudcolor = tex2D(cloudfieldtexture,IN.uv + float2(skyscroll * 0.2,-skyscroll * 0.1));
+	cloudcolor.rgb +=  (tex2D(sungradient,pixelheight * atmosthickness))* (1-abs(IN.normsunpos.y));
+	cloudcolor.rgb *= clamp(IN.normsunpos.y,0.025,1);
+	cloudcolor.a *=  clouds;
+		
+	if(IN.sunpos.z < 0)	suncolor = float3(0,0,0);
+	if(IN.moonpos.z < 0) mooncolor = float3(0,0,0);
+	
+	float3 correctedcolor = (skycolor - clamp(redcorrectcolor,0,1));
+	correctedcolor = clamp(correctedcolor,0,1);
+	OUT.color.rgb = lerp((correctedcolor) + suncolor + mooncolor + starcolor,cloudcolor.rgb,cloudcolor.a);
+	OUT.color.rgb *= lightstrength;
+
+	return OUT;
+}

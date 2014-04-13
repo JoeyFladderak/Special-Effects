@@ -1,0 +1,736 @@
+/*
+	OpenMDL Maya UI
+	http://www.openmdl.org
+	
+	Author:
+	Eric den Boer
+	NHTV Breda University of Applied Sciences
+	Student No. 080329
+	080329@nhtv.nl
+	
+	Special thanks:
+	Jan Pijpers
+	NHTV Breda University of Applied Sciences
+	Student No. 061842
+	061842@nhtv.nl
+*/
+
+global proc changeAnimations()
+{
+	int $state = `checkBox -query -value chkDoAnimations`;
+	checkBox
+		-edit -enable $state
+		-edit -value 0
+	chkSepAnimations;
+	
+	text
+		-edit -enable $state
+	txtStartFrame;
+	text
+		-edit -enable $state
+	txtEndFrame;
+	text
+		-edit -enable $state
+	txtFramerate;
+	text
+		-edit -enable $state
+	txtAnimName;
+	
+	textField
+		-edit -enable $state
+	fldStartFrame;
+	textField
+		-edit -enable $state
+	fldEndFrame;
+	textField
+		-edit -enable $state
+	fldAnimName;
+	
+	optionMenu
+		-edit -enable $state
+	mnuFramerate;
+	
+	textScrollList
+		-edit -enable $state
+		-edit -deselectAll
+	lstAnimations;
+	
+	button
+		-edit -enable $state
+	btnAddAnim;
+}
+
+global proc changeJoints()
+{
+	int $state = `checkBox -query -value chkDoJoints`;
+	checkBox
+		-edit -enable $state
+		-edit -value 0
+	chkSepJoints;
+}
+
+global proc changeMaterials()
+{
+	int $state = `checkBox -query -value chkDoMaterials`;
+	checkBox
+		-edit -enable $state
+		-edit -value 0
+	chkSepMaterials;
+}
+
+global proc changeTexCoords()
+{
+	int $state = `checkBox -query -value chkDoTexCoords`;
+	checkBox
+		-edit -enable $state
+		-edit -value $state
+	chkInvertU;
+	checkBox
+		-edit -enable $state
+		-edit -value 0
+	chkInvertV;
+}
+
+global proc changeGeometry()
+{
+	int $state = `checkBox -query -value chkDoGeometry`;
+	checkBox
+		-edit -enable $state
+		-edit -value $state
+	chkDoNormals;
+	checkBox
+		-edit -enable $state
+		-edit -value $state
+	chkDoTangents;
+	checkBox
+		-edit -enable $state
+		-edit -value $state
+	chkDoTexCoords;
+	checkBox
+		-edit -enable $state
+		-edit -value $state
+	chkInvertU;
+	checkBox
+		-edit -enable $state
+		-edit -value 0
+	chkInvertV;
+}
+
+global proc delAnimationUI()
+{
+	// get the selected item and remove it from the list
+	string $selectedItems[] = `textScrollList -q -si lstAnimations`;
+	int $numSelectedItems = size($selectedItems);
+	for($i = 0; $i < $numSelectedItems; $i++)
+	{
+		string $selectedItem = $selectedItems[$i];
+		
+		// remove selected item from the list
+		textScrollList
+			-edit -ri $selectedItem
+		lstAnimations;
+	}
+}
+
+global proc addAnimationUI(string $startFrame, string $endFrame, string $framerate, string $name)
+{
+	string $stringToAppend = $startFrame + "|" + $endFrame + "|" + $framerate + "|" + $name;
+	textScrollList
+			-edit -append $stringToAppend
+	lstAnimations;
+}
+
+global proc delAnimation()
+{
+	delAnimationUI();
+	
+	// recompose a list and write it back to the existing file
+	string $currentFile = `file -q -sn`;
+	string $fileToOpen = $currentFile + ".aef";
+	
+	string $allItems[] = `textScrollList -q -ai lstAnimations`;
+	int $numItems = `textScrollList -q -ni lstAnimations`;
+	
+	// Now re-open the file and write the new list to it
+	int $fileId = `fopen $fileToOpen "w"`;
+	if($fileId != 0)
+	{
+		for($i = 0; $i < $numItems; $i++)
+		{
+			string $item = $allItems[$i] + "#";
+			fprint $fileId $item;
+		}
+		
+		fclose $fileId;
+	}
+	else
+	{
+		print(">> WARNING: Unable to update " + $fileToOpen + " with the Animation Sequence list\n");
+	}
+}
+
+global proc addAnimation()
+{
+	string $startFrame = `textField -q -tx fldStartFrame`;
+	string $endFrame = `textField -q -tx fldEndFrame`;
+	string $framerate = `optionMenu -q -v mnuFramerate`;
+	string $name = `textField -q -tx fldAnimName`;
+	string $currentFile = `file -q -sn`;
+	string $fileToOpen = $currentFile + ".aef";
+	
+	print(">> Current file: " + $currentFile + "\n");
+	
+	if($currentFile == "")
+	{
+		print(">> WARNING: No file has been opened, cannot add Animation Sequence\n");
+		return;
+	}
+	
+	// test if the current file exists or not
+	int $fileId = 0;
+	int $fileExists = `filetest -f $fileToOpen`;
+	if($fileExists == 0)
+	{
+		// open file with "w" parameter
+		$fileId = `fopen $fileToOpen "w"`;
+	}
+	else
+	{
+		// open file with "a" parameter
+		$fileId = `fopen $fileToOpen "a"`;
+	}
+	
+	// file should be opened by now
+	// add the data we just got from the form
+	string $line = $startFrame + "|" + $endFrame + "|" + $framerate + "|" + $name + "#";
+	print(">> Writing Animation Sequence to " + $fileToOpen + ": " + $line + "\n");
+	fprint $fileId $line;
+	fclose $fileId;
+	
+	// clear fields
+	textField
+		-edit -tx ""
+	fldStartFrame;
+	textField
+		-edit -tx ""
+	fldEndFrame;
+	textField
+		-edit -tx ""
+	fldAnimName;
+	
+	addAnimationUI($startFrame, $endFrame, $framerate, $name);
+}
+
+global proc loadAnimations()
+{
+	string $startFrame;
+	string $endFrame;
+	string $frameRate;
+	string $name;
+	string $currentFile = `file -q -sn`;
+	string $fileToOpen = $currentFile + ".aef";
+	
+	int $fileId = 0;
+	int $fileExists = `filetest -f $fileToOpen`;
+	if($fileExists == 1)
+	{
+		// open file with "r" parameter
+		$fileId = `fopen $fileToOpen "r"`;
+		
+		// read the content from the file
+		string $fileContent;
+		$fileContent = `fread $fileId $fileContent`;
+		
+		print(">> File content: " + $fileContent + "\n");
+		
+		string $entries[];
+		int $numEntries = `tokenize $fileContent "#" $entries`;
+		print(">> Found " + $numEntries + " Animation Sequence entries\n");
+		for($e = 0; $e < $numEntries; $e++)
+		{
+			string $entry = $entries[$e];
+			print(">> Animation Sequence: " + $entry + "\n");
+			
+			string $tokens[];
+			int $numTokens = `tokenize $entry "|" $tokens`;
+			print(">>   Found " + $numTokens + " tokens in Animation Sequence\n");
+			
+			// Valid amount of tokens (start, end, fps, name)
+			if($numTokens == 4)
+			{
+				$startFrame = $tokens[0];
+				$endFrame = $tokens[1];
+				$framerate = $tokens[2];
+				$name = $tokens[3];
+				
+				print(">>     Start frame: " + $startFrame + "\n");
+				print(">>     End frame: " + $endFrame + "\n");
+				print(">>     Framerate: " + $framerate + "\n");
+				print(">>     Name: " + $name + "\n");
+				
+				addAnimationUI($startFrame, $endFrame, $framerate, $name);
+			}
+		}
+		
+		fclose $fileId;
+	}
+}
+
+global proc int OpenMDLMaya(string $parent, string $action, string $initialSettings, string $resultCallback)
+{
+	string 	$currentOptions;
+	string	$optionList[];
+	string	$optionBreakDown[];
+	int		$i;
+	
+	if($action == "post")
+	{	
+		setParent $parent;
+		
+		formLayout 
+			-numberOfDivisions 100 
+		mainForm;
+		
+		checkBox 
+			-label "Geometry" 
+			-value 1 
+			-changeCommand "changeGeometry"
+		chkDoGeometry;
+		
+			checkBox 
+				-label "Normals" 
+				-value 1 
+			chkDoNormals;
+			
+			checkBox 
+				-label "Tangents" 
+				-value 1 
+			chkDoTangents;
+		
+			checkBox 
+				-label "TexCoords" 
+				-value 1
+				-changeCommand "changeTexCoords"
+			chkDoTexCoords;
+			
+				checkBox 
+					-label "Invert U" 
+					-value 1 
+				chkInvertU;
+				
+				checkBox 
+					-label "Invert V" 
+					-value 0 
+				chkInvertV;
+		
+		
+		checkBox
+			-label "Materials"
+			-value 1
+			-changeCommand "changeMaterials"
+		chkDoMaterials;
+		
+			checkBox
+				-label "Separate file"
+				-value 0
+			chkSepMaterials;
+		
+				
+		checkBox
+			-label "Joints"
+			-value 1
+			-changeCommand "changeJoints"
+		chkDoJoints;
+		
+			checkBox
+				-label "Separate file"
+				-value 0
+			chkSepJoints;
+			
+			
+		checkBox
+			-label "Animations"
+			-value 1
+			-changeCommand "changeAnimations"
+		chkDoAnimations;
+		
+			checkBox
+				-label "Separate file"
+				-value 0
+			chkSepAnimations;
+			
+			
+		checkBox
+			-label "Cameras"
+			-value 1
+		chkDoCameras;
+		
+		checkBox
+			-label "Lights"
+			-value 1
+		chkDoLights;
+		
+		
+		
+		checkBox
+			-label "Triangulate"
+			-value 1
+		chkDoTriangulate;
+			
+			
+			
+		
+		// Animation Sequence Editor
+		text
+			-align "left"
+			-label "Animation Sequence Editor"
+			-fn "boldLabelFont"
+		txtAnimOptions;
+		
+		
+		// Animation Editor texts
+		text
+			-align "left"
+			-label "Start"
+			-enable 1
+		txtStartFrame;
+		
+		text
+			-align "left"
+			-label "End"
+			-enable 1
+		txtEndFrame;
+		
+		text
+			-align "left"
+			-label "Framerate"
+			-enable 1
+		txtFramerate;
+		
+		text
+			-align "left"
+			-label "Name"
+			-enable 1
+		txtAnimName;
+		
+		
+		
+		// Animation Editor form fields
+		textField
+			-width 40
+			-enable 1
+		fldStartFrame;
+		
+		textField
+			-width 40
+			-enable 1
+		fldEndFrame;
+		
+		optionMenu 
+			-label "" 
+			-enable 1 
+		mnuFramerate;
+		menuItem -label "Game (15 fps)";
+		menuItem -label "Film (24 fps)";
+		menuItem -label "PAL (25 fps)";
+		menuItem -label "NTSC (30 fps)";
+		menuItem -label "Show (48 fps)";
+		menuItem -label "PALF (50 fps)";
+		menuItem -label "NTSCF (60 fps)";
+		
+		textField
+			-width 80
+			-enable 1
+		fldAnimName;
+		
+		textScrollList
+			-numberOfRows 4
+			-width 265
+			-enable 1
+			-allowMultiSelection 1
+			-deleteKeyCommand "delAnimation"
+			-selectCommand ""
+			-font "smallFixedWidthFont"
+		lstAnimations;
+		
+		
+		
+		// Animation Editor buttons
+		button
+			-label "Add"
+			-command "addAnimation"
+			-width 35
+			-height 20
+			-enable 1
+		btnAddAnim;
+		
+			
+			
+		// Form
+		formLayout -edit
+			-attachForm chkDoGeometry "top" 10
+			-attachForm chkDoGeometry "left" 10
+			
+				-attachForm chkDoNormals "left" 28
+				-attachForm chkDoNormals "top" 30
+				
+				-attachForm chkDoTangents "left" 28
+				-attachForm chkDoTangents "top" 50
+				
+				-attachForm chkDoTexCoords "left" 28
+				-attachForm chkDoTexCoords "top" 70
+				
+					-attachForm chkInvertU "left" 46
+					-attachForm chkInvertU "top" 90
+					
+					-attachForm chkInvertV "left" 46
+					-attachForm chkInvertV "top" 110
+					
+					
+					
+			-attachForm chkDoMaterials "top" 10
+			-attachForm chkDoMaterials "left" 130
+			
+				-attachForm chkSepMaterials "top" 30
+				-attachForm chkSepMaterials "left" 148
+				
+			-attachForm chkDoJoints "top" 50
+			-attachForm chkDoJoints "left" 130
+			
+				-attachForm chkSepJoints "top" 70
+				-attachForm chkSepJoints "left" 148
+				
+			-attachForm chkDoAnimations "top" 90
+			-attachForm chkDoAnimations "left" 130
+			
+				-attachForm chkSepAnimations "top" 110
+				-attachForm chkSepAnimations "left" 148
+				
+				
+				
+			-attachForm chkDoCameras "top" 10
+			-attachForm chkDoCameras "left" 250
+			
+			-attachForm chkDoLights "top" 28
+			-attachForm chkDoLights "left" 250
+			
+			
+			
+			-attachForm chkDoTriangulate "top" 70
+			-attachForm chkDoTriangulate "left" 250
+				
+				
+				
+			-attachForm txtAnimOptions "top" 150
+			-attachForm txtAnimOptions "left" 10
+			
+			-attachForm txtStartFrame "top" 170
+			-attachForm txtStartFrame "left" 10
+			-attachForm fldStartFrame "top" 190
+			-attachForm fldStartFrame "left" 8
+			
+			-attachForm txtEndFrame "top" 170
+			-attachForm txtEndFrame "left" 50
+			-attachForm fldEndFrame "top" 190
+			-attachForm fldEndFrame "left" 48
+			
+			-attachForm txtFramerate "top" 170
+			-attachForm txtFramerate "left" 90
+			-attachForm mnuFramerate "top" 190
+			-attachForm mnuFramerate "left" 89
+			
+			-attachForm txtAnimName "top" 170
+			-attachForm txtAnimName "left" 195
+			-attachForm fldAnimName "top" 190
+			-attachForm fldAnimName "left" 193
+			
+			-attachForm btnAddAnim "top" 190
+			-attachForm btnAddAnim "left" 275
+			
+			
+			
+			-attachForm lstAnimations "top" 215
+			-attachForm lstAnimations "left" 8
+		mainForm;
+		
+		// load from possible .aef file
+		loadAnimations();
+	}
+	
+	// We hit the export button!
+	if($action == "query")
+	{
+		$currentOptions = "";
+		if(`checkBox -q -v chkDoGeometry` == 1)
+		{
+			$currentOptions = "-doGeometry=1;";
+		}
+		else
+		{
+			$currentOptions = "-doGeometry=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-doMaterials";
+		if(`checkBox -q -v chkDoMaterials` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-doTangents";
+		if(`checkBox -q -v chkDoTangents` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-doNormals";
+		if(`checkBox -q -v chkDoNormals` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-doTexCoords";
+		if(`checkBox -q -v chkDoTexCoords` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-invertU";
+		if(`checkBox -q -v chkInvertU` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-invertV";
+		if(`checkBox -q -v chkInvertV` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-doJoints";
+		if(`checkBox -q -v chkDoJoints` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-doCameras";
+		if(`checkBox -q -v chkDoCameras` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-doLights";
+		if(`checkBox -q -v chkDoLights` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-doTriangulate";
+		if(`checkBox -q -v chkDoTriangulate` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-doAnimations";
+		if(`checkBox -q -v chkDoAnimations` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-sepJoints";
+		if(`checkBox -q -v chkSepJoints` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-sepAnimations";
+		if(`checkBox -q -v chkSepAnimations` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		$currentOptions = $currentOptions + "-sepMaterials";
+		if(`checkBox -q -v chkSepMaterials` == 1)
+		{
+			$currentOptions = $currentOptions + "=1;";
+		}
+		else
+		{
+			$currentOptions = $currentOptions + "=0;";
+		}
+		
+		
+		if(`checkBox -q -v chkDoAnimations` == 1)
+		{
+			// Add animation sequences to the currentOptions
+			string $allItems[] = `textScrollList -q -ai lstAnimations`;
+			int $numItems = `textScrollList -q -ni lstAnimations`;
+			if($numItems > 0)
+			{
+				$currentOptions = $currentOptions + "-animSequences=";
+			}
+			
+			// Loop through all the sequences and export it
+			for($i = 0; $i < $numItems; $i++)
+			{
+				string $item = $allItems[$i];
+				$currentOptions = $currentOptions + $item + "#";
+			}
+		}
+		
+		eval($resultCallback+" \""+$currentOptions+"\"");
+	}
+	
+	return 1;
+}
